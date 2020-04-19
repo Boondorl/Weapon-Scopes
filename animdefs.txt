@@ -1,0 +1,1 @@
+cameratexture SCAMTEX1 384 384
