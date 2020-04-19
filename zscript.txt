@@ -50,7 +50,8 @@ class ScopeHandler : EventHandler
 		if (!sc)
 			return;
 		
-		pos = (sc.xOffset, sc.yOffset);
+		let psp = players[consoleplayer].GetPSprite(PSP_WEAPON);
+		pos = (psp.x + sc.bob.x, (psp.y - WEAPONTOP) + sc.bob.y);
 		if (!sc.bDrawScope)
 			return;
 		
@@ -108,8 +109,7 @@ class ScopeHandler : EventHandler
 
 class Scope : Actor
 {
-	double xOffset;
-	double yOffset;
+	Vector2 bob;
 	bool bDrawScope;
 	
 	double forwardOffset;
@@ -144,14 +144,11 @@ class Scope : Actor
 		Vector2 forOfs = AngleToVector(master.angle);
 		Vector3 forward = (forOfs*cos(master.pitch), -sin(master.pitch));
 		
+		bob = master.player.mo.BobWeapon(1);
+		
 		let psp = master.player.GetPSprite(PSP_WEAPON);
-		let bob = master.player.mo.BobWeapon(1);
-		
-		xOffset = psp.x + bob.x;
-		yOffset = (psp.y - WEAPONTOP) + bob.y;
-		
-		Vector2 xyOfs = AngleToVector(master.angle-90, (xOffset/4 + sideOffset));
-		double zOfs = yOffset / 4;
+		Vector2 xyOfs = AngleToVector(master.angle-90, (psp.x + bob.x)/4 + sideOffset);
+		double zOfs = ((psp.y - WEAPONTOP) + bob.y) / 4;
 		
 		Vector3 newPos = master.pos + forward*(master.radius/2) +
 						(forOfs*forwardOffset + xyOfs, upOffset + master.player.viewHeight - master.floorclip - zOfs);
