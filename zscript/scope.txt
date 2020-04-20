@@ -75,13 +75,17 @@ class ScopeHandler : EventHandler
 		if (!sc.bDrawScope)
 			return;
 		
+		// Account for virtual resolutions
+		int wOfs, hOfs, w, h;
+		[wOfs, hOfs, w, h] = Screen.GetViewWindow();
+		
 		// Make sure scope stays proportional to resolution (based on 1920x1080)
-		int h = Screen.GetHeight();
 		double multi = h / 1080.;
 		
+		// Center screen then translate weapon offsets to the proper resolution
 		Vector2 scale = statusBar.GetHUDScale();
-		double x = Screen.GetWidth() / 2 + (oldPos.x + (pos.x - oldPos.x)*e.fracTic)*scale.x;
-		double y = h / 2 + (oldPos.y + (pos.y - oldPos.y)*e.fracTic)*scale.y;
+		double x = wOfs + w/2 + (oldPos.x + (pos.x - oldPos.x)*e.fracTic) * scale.x * (w*1./Screen.GetWidth());
+		double y = hOfs +  h/2 + (oldPos.y + (pos.y - oldPos.y)*e.fracTic) * scale.y * (h*1./Screen.GetHeight());
 		Vector2 size = TexMan.GetScaledSize(lens);
 		
 		DrawScope(lens, size.x/2 * multi, (x,y));
