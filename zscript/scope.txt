@@ -97,7 +97,13 @@ class ScopeHandler : EventHandler
 		double y = hOfs +  h/2. + realPos.y * scale.y * ((h+diff)*1./height);
 		Vector2 size = TexMan.GetScaledSize(lens);
 		
+		int cx, cy, cw, ch;
+		[cx, cy, cw, ch] = Screen.GetClipRect();
+		Screen.SetClipRect(wOfs, hOfs, w, h);
+		
 		DrawScope(lens, size.x/2 * multi, (x,y));
+		
+		Screen.SetClipRect(cx, cy, cw, ch);
 	}
 	
 	ui Scope FindScope(uint playernum)
