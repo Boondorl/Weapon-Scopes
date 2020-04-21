@@ -2,8 +2,9 @@
 
 class ScopeHandler : EventHandler
 {
-	ui double oldFOV;
-	ui Vector2 oldPos;
+	private ui double oldFOV;
+	private ui Vector2 oldPos;
+	
 	ui Vector2 pos;
 	ui Scope sc;
 	ui TextureID lens;
@@ -146,6 +147,7 @@ class Scope : Actor
 {
 	private Vector3 prevPos;
 	private Vector2 prevAngles;
+	private Vector2 prevOffset;
 	
 	Vector2 bob;
 	bool bDrawScope;
@@ -190,7 +192,12 @@ class Scope : Actor
 		
 		Vector2 angles = (master.angle, master.pitch);
 		Vector3 viewPos = (master.pos.xy, master.player.viewz);
-		if (viewPos == prevPos && angles == prevAngles)
+		Vector2 offset = (0,0);
+		let psp = master.player.GetPSprite(PSP_WEAPON);
+		if (psp)
+			offset = (psp.x, psp.y - WEAPONTOP);
+		
+		if (viewPos == prevPos && angles == prevAngles && offset == prevOffset)
 		{
 			roll = master.roll;
 			return;
@@ -201,7 +208,6 @@ class Scope : Actor
 		
 		Vector2 xyOfs;
 		double zOfs;
-		let psp = master.player.GetPSprite(PSP_WEAPON);
 		if (psp)
 		{
 			xyOfs = AngleToVector(master.angle-90, (psp.x + bob.x)/8 + sideOffset);
@@ -220,5 +226,6 @@ class Scope : Actor
 		
 		prevPos = viewPos;
 		prevAngles = angles;
+		prevOffset = offset;
 	}
 }
