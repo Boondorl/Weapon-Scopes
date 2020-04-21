@@ -92,8 +92,9 @@ class ScopeHandler : EventHandler
 		double multi = (h+diff) / 1080.;
 		
 		// Center screen then translate weapon offsets to the proper resolution
-		double x = wOfs + w/2. + (oldPos.x + (pos.x - oldPos.x)*e.fracTic) * scale.x * (w*1./Screen.GetWidth());
-		double y = hOfs +  h/2. + (oldPos.y + (pos.y - oldPos.y)*e.fracTic) * scale.y * ((h+diff)*1./height);
+		Vector2 realPos = Lerp(oldPos, pos, e.fracTic);
+		double x = wOfs + w/2. + realPos.x * scale.x * (w*1./Screen.GetWidth());
+		double y = hOfs +  h/2. + realPos.y * scale.y * ((h+diff)*1./height);
 		Vector2 size = TexMan.GetScaledSize(lens);
 		
 		DrawScope(lens, size.x/2 * multi, (x,y));
@@ -141,6 +142,11 @@ class ScopeHandler : EventHandler
 		
 		Screen.DrawShape(id, false, circle);
     }
+	
+	ui Vector2 Lerp(in Vector2 a, in Vector2 b, double t)
+	{
+		return a*(1-t) + b*t;
+	}
 }
 
 class Scope : Actor
