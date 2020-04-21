@@ -144,6 +144,9 @@ class ScopeHandler : EventHandler
 
 class Scope : Actor
 {
+	private Vector3 prevPos;
+	private Vector2 prevAngles;
+	
 	Vector2 bob;
 	bool bDrawScope;
 	
@@ -161,7 +164,9 @@ class Scope : Actor
 		Height 0;
 		Radius 0;
 		
+		+INTERPOLATEANGLES
 		+NOINTERACTION
+		+NOBLOCKMAP
 	}
 	
 	override void Tick()
@@ -179,10 +184,20 @@ class Scope : Actor
 		if (!master.player.ReadyWeapon || master.player.ReadyWeapon.CameraFOV <= 0)
 			bDrawScope = false;
 		
+		bob = (0,0);
+		if (master.player.vel != (0,0))
+			bob = master.player.mo.BobWeapon(1);
+		
+		Vector2 angles = (master.angle, master.pitch);
+		Vector3 viewPos = (master.pos.xy, master.player.viewz);
+		if (viewPos == prevPos && angles == prevAngles)
+		{
+			roll = master.roll;
+			return;
+		}
+		
 		Vector2 forOfs = AngleToVector(master.angle);
 		Vector3 forward = (forOfs*cos(master.pitch), -sin(master.pitch));
-		
-		bob = master.player.mo.BobWeapon(1);
 		
 		Vector2 xyOfs;
 		double zOfs;
@@ -198,9 +213,12 @@ class Scope : Actor
 		Vector3 newPos = master.pos + forward*(master.radius/2) +
 						(forOfs*forwardOffset + xyOfs, upOffset + (master.player.viewz-master.pos.z) - zOfs);
 						
-		SetOrigin(newPos, true);
-		A_SetAngle(master.angle, SPF_INTERPOLATE);
-		A_SetPitch(master.pitch, SPF_INTERPOLATE);
+		SetXYZ(newPos);
+		angle = master.angle;
+		pitch = master.pitch;
 		roll = master.roll;
+		
+		prevPos = viewPos;
+		prevAngles = angles;
 	}
 }
