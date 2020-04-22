@@ -76,15 +76,20 @@ class ScopeHandler : EventHandler
 		if (!sc.bDrawScope)
 			return;
 		
-		Vector2 scale = statusBar.GetHUDScale();
-		
 		// Account for virtual resolutions
 		int wOfs, hOfs, w, h;
 		[wOfs, hOfs, w, h] = Screen.GetViewWindow();
 		
 		// Make sure scope stays proportional to resolution (based on 1920x1080)
-		// Account for the status bar
 		int height = Screen.GetHeight();
+		int width = Screen.GetWidth();
+		
+		// Scale PSprite coordinates to real screen
+		Vector2 scale;
+		scale.x = (320 / (240 * (width*1./height))) * w / 320.;
+		scale.y = (height*w) / (width*200.);
+		
+		// Account for the status bar
 		double diff = height - (hOfs*2 + h);
 		if (hOfs > 0)
 			diff *= (h+diff) / 1080.;
@@ -93,8 +98,8 @@ class ScopeHandler : EventHandler
 		
 		// Center screen then translate weapon offsets to the proper resolution
 		Vector2 realPos = Lerp(oldPos, pos, e.fracTic);
-		double x = wOfs + w/2. + realPos.x * scale.x * (w*1./Screen.GetWidth());
-		double y = hOfs +  h/2. + realPos.y * scale.y * ((h+diff)*1./height);
+		double x = wOfs + w/2. + realPos.x*scale.x;
+		double y = hOfs +  h/2. + realPos.y*scale.y;
 		Vector2 size = TexMan.GetScaledSize(lens);
 		
 		int cx, cy, cw, ch;
@@ -198,9 +203,9 @@ class Scope : Actor
 		if (!master.player.ReadyWeapon || master.player.ReadyWeapon.CameraFOV <= 0)
 			bDrawScope = false;
 		
-		bob = (0,0);
-		if (master.player.vel != (0,0))
-			bob = master.player.mo.BobWeapon(1);
+		double prevBob = master.player.mo.curbob;
+		bob = master.player.mo.BobWeapon(1);
+		master.player.mo.curbob = prevBob;
 		
 		Vector2 angles = (master.angle, master.pitch);
 		Vector3 viewPos = (master.pos.xy, master.player.viewz);
