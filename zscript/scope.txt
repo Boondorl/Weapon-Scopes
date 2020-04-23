@@ -67,9 +67,11 @@ class ScopeHandler : EventHandler
 			return;
 		
 		// Calculate position to interpolate to
-		let psp = players[consoleplayer].GetPSprite(PSP_WEAPON);
-		if (psp)
+		if (players[consoleplayer].ReadyWeapon)
+		{
+			let psp = players[consoleplayer].GetPSprite(PSP_WEAPON);
 			pos = (psp.x + sc.bob.x, (psp.y - WEAPONTOP) + sc.bob.y);
+		}
 		else
 			pos = oldPos;
 		
@@ -184,7 +186,6 @@ class Scope : Actor
 		Radius 0;
 		
 		+INTERPOLATEANGLES
-		+NOINTERACTION
 		+NOBLOCKMAP
 	}
 	
@@ -210,7 +211,11 @@ class Scope : Actor
 		Vector2 angles = (master.angle, master.pitch);
 		Vector3 viewPos = (master.pos.xy, master.player.viewz);
 		Vector2 offset = (0,0);
-		let psp = master.player.GetPSprite(PSP_WEAPON);
+		
+		PSprite psp;
+		if (master.player.ReadyWeapon)
+			psp = master.player.GetPSprite(PSP_WEAPON);
+		
 		if (psp)
 			offset = (psp.x, psp.y - WEAPONTOP);
 		
