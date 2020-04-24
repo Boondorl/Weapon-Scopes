@@ -88,20 +88,16 @@ class ScopeHandler : EventHandler
 		
 		// Scale PSprite coordinates to real screen
 		Vector2 scale;
-		scale.x = (320 / (240 * (width*1./height))) * w / 320.;
+		scale.x = w / (240 * Screen.GetAspectRatio());
 		scale.y = (height*w) / (width*200.);
 		
 		// Account for the status bar
-		double diff = height - (hOfs*2 + h);
-		if (hOfs > 0)
-			diff *= (h+diff) / 1080.;
-		
-		double multi = (h+diff) / 1080.;
+		double multi = h / (hOfs*2. + h) * height / 1080.;
 		
 		// Center screen then translate weapon offsets to the proper resolution
 		Vector2 realPos = Lerp(oldPos, pos, e.fracTic);
-		double x = wOfs + w/2. + realPos.x*scale.x;
-		double y = hOfs +  h/2. + realPos.y*scale.y;
+		int x = wOfs + w/2 + realPos.x*scale.x;
+		int y = hOfs +  h/2 + realPos.y*scale.y;
 		Vector2 size = TexMan.GetScaledSize(lens);
 		
 		int cx, cy, cw, ch;
@@ -132,11 +128,11 @@ class ScopeHandler : EventHandler
 	// rad = radius of circle (using half width of texture is recommended)
 	// verts describes how detailed the circle of the scope is
 	// more verts = higher resolution circle but higher performance cost
-	ui void DrawScope(TextureID id, double rad, Vector2 pos, uint verts = 32)
+	ui void DrawScope(TextureID id, int rad, Vector2 pos, uint verts = 32)
     {
         Shape2D circle = new("Shape2D");
 		
-		double angStep = 360 / verts;
+		double angStep = 360. / verts;
 		double ang;
 		for (uint i = 0; i < verts; ++i)
 		{
