@@ -4,6 +4,7 @@ class ScopeHandler : EventHandler
 {
 	private ui double oldFOV;
 	private ui Vector2 oldPos;
+	private ui Shape2D circle;
 	
 	ui Vector2 pos;
 	ui Scope sc;
@@ -39,6 +40,9 @@ class ScopeHandler : EventHandler
 	
 	override void UITick()
 	{
+		if (!circle)
+			circle = CreateCircle();
+		
 		// Check valid player scope
 		if (!sc)
 			sc = FindScope(consoleplayer);
@@ -78,7 +82,7 @@ class ScopeHandler : EventHandler
 		if (!sc.bDrawScope)
 			return;
 		
-		// Account for virtual resolutions
+		// Account for the view port
 		int wOfs, hOfs, w, h;
 		[wOfs, hOfs, w, h] = Screen.GetViewWindow();
 		
@@ -100,11 +104,12 @@ class ScopeHandler : EventHandler
 		int y = hOfs +  h/2 + realPos.y*scale.y;
 		Vector2 size = TexMan.GetScaledSize(lens);
 		
+		// Make sure it can't draw outside of the view port
 		int cx, cy, cw, ch;
 		[cx, cy, cw, ch] = Screen.GetClipRect();
 		Screen.SetClipRect(wOfs, hOfs, w, h);
 		
-		DrawScope(lens, size.x/2 * multi, (x,y));
+		DrawScope(lens, circle, size.x/2 * multi, (x,y));
 		
 		Screen.SetClipRect(cx, cy, cw, ch);
 	}
@@ -125,12 +130,11 @@ class ScopeHandler : EventHandler
 		return null;
 	}
 	
-	// rad = radius of circle (using half width of texture is recommended)
 	// verts describes how detailed the circle of the scope is
 	// more verts = higher resolution circle but higher performance cost
-	ui void DrawScope(TextureID id, int rad, Vector2 pos, uint verts = 32)
-    {
-        Shape2D circle = new("Shape2D");
+	ui static Shape2D CreateCircle(uint verts = 64)
+	{
+		Shape2D circle = new("Shape2D");
 		
 		double angStep = 360. / verts;
 		double ang;
@@ -139,16 +143,29 @@ class ScopeHandler : EventHandler
 			double c = cos(ang);
 			double s = sin(ang);
 			
+			circle.PushVertex((c,s));
 			circle.PushCoord(((c+1)/2, (s+1)/2));
 			
 			if (i+2 < verts)
 				circle.PushTriangle(0, i+1, i+2);
 			
-			circle.PushVertex((c*rad + pos.x, s*rad + pos.y));
-			
 			ang += angStep;
 		}
 		
+		return circle;
+	}
+	
+	ui void DrawScope(TextureID id, Shape2D shape, int scale, Vector2 pos, double rotAng = 0)
+    {
+		if (!shape)
+			return;
+		
+		let transform = new("Shape2DTransform");
+		transform.Rotate(rotAng);
+		transform.Scale((scale,scale));
+		transform.Translate(pos);
+		
+		shape.SetTransform(transform);
 		Screen.DrawShape(id, false, circle);
     }
 	
