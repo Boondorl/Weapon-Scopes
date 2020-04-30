@@ -161,8 +161,8 @@ class ScopeHandler : EventHandler
 			return;
 		
 		let transform = new("Shape2DTransform");
-		transform.Rotate(rotAng);
 		transform.Scale((scale,scale));
+		transform.Rotate(rotAng);
 		transform.Translate(pos);
 		
 		shape.SetTransform(transform);

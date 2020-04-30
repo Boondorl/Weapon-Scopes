@@ -1,4 +1,4 @@
 version "2.4"
 
-#include "zscript/scope.txt"
-#include "zscript/testweapons.txt"
+#include "scope/scope.txt"
+#include "scope/testweapons.txt"
