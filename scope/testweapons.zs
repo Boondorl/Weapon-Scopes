@@ -12,8 +12,9 @@ class ScopedChaingun : ScopedWeapon replaces Chaingun
 		Tag "$TAG_CHAINGUN";
 		
 		CameraFOV 15;
-		ScopedWeapon.RenderHeightOffset 32;
 		ScopedWeapon.ScopeTexture "TROOA1";
+		ScopedWeapon.SwaySideMultiplier 1;
+		ScopedWeapon.SwayUpMultiplier 1;
 	}
 	
 	States
@@ -23,7 +24,23 @@ class ScopedChaingun : ScopedWeapon replaces Chaingun
 			Loop;
 			
 		Zoom:
-			CHGG A 1 A_Scope;
+			CHGG A 1
+			{
+				if (IsScoped())
+				{
+					if (GetScopeZoom() >= 2)
+					{
+						A_ChangeScopeZoom();
+						A_Unscope();
+					}
+					else
+						A_ChangeScopeZoom(2);
+					
+					return;
+				}
+				
+				A_Scope();
+			}
 			Goto Ready;
 			
 		Deselect:
@@ -36,10 +53,8 @@ class ScopedChaingun : ScopedWeapon replaces Chaingun
 			Loop;
 			
 		Fire:
-			TNT1 A 0 {invoker.cameraFov += 2;}
 			CHGG AB 4 A_FireCGun;
 			CHGG B 0 A_ReFire;
-			TNT1 A 0 {invoker.cameraFov = invoker.default.cameraFov;}
 			Goto Ready;
 			
 		Flash:

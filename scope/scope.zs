@@ -5,14 +5,14 @@ class ScopeHandler : EventHandler
 	// Interpolation data
 	private ui Vector2 oldScale;
 	private ui double oldRotation;
+	private ui Vector3 oldPos;
 	
 	private ui double oldFOV;
 	private ui Shape2D circle;
 	private ui TextureID lens;
 	
-	bool bSize;
-	
 	// DEBUG
+	bool bSize;
 	override void WorldTick()
 	{
 		let psp = players[consoleplayer].GetPSprite(PSP_WEAPON);
@@ -30,8 +30,8 @@ class ScopeHandler : EventHandler
 		psp.bInterpolate = true;
 		psp.pivot = (0,0);
 		psp.bPivotPercent = true;
-		psp.HAlign = PSPA_LEFT;
-		psp.VAlign = PSPA_TOP;
+		psp.HAlign = PSPA_CENTER;
+		psp.VAlign = PSPA_CENTER;
 	}
 	// END DEBUG
 	
@@ -87,69 +87,86 @@ class ScopeHandler : EventHandler
 		if (psp.bMirror)
 			realPos.x *= -1;
 		
-		Vector2 scopeScale = psp.bInterpolate ? Lerp(oldScale, psp.scale, e.fracTic) : psp.scale;
-		double scopeAngle = psp.bInterpolate ? -LerpFloat(oldRotation, psp.rotation, e.fracTic) : -psp.rotation;
+		bool interpolate = psp.interpolateTic || psp.bInterpolate;
+		Vector2 scopeScale = interpolate ? Lerp(oldScale, psp.scale, e.fracTic) : psp.scale;
+		double scopeAngle = interpolate ? -LerpFloat(oldRotation, psp.rotation, e.fracTic) : -psp.rotation;
 		
-		Vector2 scopePos = (wOfs + w/2 + realPos.x*scale.x, hOfs + h + realPos.y*scale.y);
+		// TODO: Sprite YAdjust in fullscreen mode
+		Vector2 scopePos = (wOfs + w/2 + realPos.x*scale.x, hOfs + h - 100*scale.y + realPos.y*scale.y);
 		Vector2 scopeOfs = (weap.renderWidthOffset*scale.x, -(WEAPONTOP+weap.renderHeightOffset)*scale.y);
 		if (psp.bMirror)
 			scopeOfs.x *= -1;
 		Vector2 scopeSize = TexMan.GetScaledSize(lens)*weap.scopeScale / 2 * multi;
 		
-		// Calculate the correct pivot point
-		Vector2 pivot;
-		if (psp.bPivotPercent)
+		// Calculate the correct anchor point for scaling
+		Vector2 pivot = psp.pivot;
+		Vector2 anchor;
+		switch (psp.HAlign)
 		{
-			switch (psp.HAlign)
-			{
-				case PSPA_LEFT:
-					pivot.x = 1 - psp.pivot.x;
-					break;
-					
-				case PSPA_RIGHT:
-					pivot.x = -1 + psp.pivot.x;
-					break;
-					
-				default:
-					pivot.x = -psp.pivot.x;
-					break;
-			}
-			
-			switch (psp.VAlign)
-			{
-				case PSPA_TOP:
-					pivot.y = 1 - psp.pivot.y;
-					break;
-					
-				case PSPA_BOTTOM:
-					pivot.y = -1 + psp.pivot.y;
-					break;
-					
-				default:
-					pivot.x = -psp.pivot.y;
-					break;
-			}
+			case PSPA_LEFT:
+				anchor.x = 0;
+				break;
+				
+			case PSPA_RIGHT:
+				anchor.x = 1;
+				break;
+				
+			default:
+				anchor.x = 0.5;
+				break;
 		}
-		else
+		
+		switch (psp.VAlign)
 		{
-			
+			case PSPA_TOP:
+				anchor.y = 0;
+				break;
+				
+			case PSPA_BOTTOM:
+				anchor.y = 1;
+				break;
+				
+			default:
+				anchor.y = 0.5;
+				break;
 		}
 		
 		if (psp.bFlip)
 		{
 			scopeAngle *= -1;
+			anchor.x = 1 - anchor.x;
 			pivot.x *= -1;
 		}
+		
+		anchor -= (0.5,0.5);
+		anchor *= -2;
+		
+		if (psp.bPivotPercent)
+			pivot *= 2;
+		else
+		{
+			pivot.x = pivot.x*scale.x / scopeSize.x;
+			pivot.y = pivot.y*scale.y / scopeSize.y;
+		}
+		
+		anchor.x -= pivot.x;
+		anchor.y -= pivot.y;
+		scopePos.x -= scopeSize.x*anchor.x;
+		scopePos.y -= scopeSize.y*anchor.y;
+		
+		scopeSize.x *= scopeScale.x;
+		scopeSize.y *= scopeScale.y;
+		scopePos += Actor.RotateVector(scopeOfs, scopeAngle);
 		
 		// Make sure it can't draw outside of the view port
 		int cx, cy, cw, ch;
 		[cx, cy, cw, ch] = Screen.GetClipRect();
 		Screen.SetClipRect(wOfs, hOfs, w, h);
 		
-		DrawScopeShape(lens, false, circle, scopePos, scopeSize, pivot, scopeScale, scopeAngle, scopeOfs);
+		DrawScope(lens, false, circle, scopePos, scopeSize, anchor: anchor);
 		let id = weap.GetScopeTexture();
 		if (id.IsValid())
-			DrawScopeShape(id, true, circle, scopePos, scopeSize, pivot, scopeScale, scopeAngle, scopeOfs, players[consoleplayer].mo.GetRenderStyle(), psp.alpha);
+			DrawScope(id, true, circle, scopePos, scopeSize, scopeAngle, players[consoleplayer].mo.GetRenderStyle(), psp.alpha, anchor);
 		
 		Screen.SetClipRect(cx, cy, cw, ch);
 	}
@@ -179,26 +196,16 @@ class ScopeHandler : EventHandler
 		return circle;
 	}
 	
-	ui void DrawScopeShape(TextureID id, bool anim, Shape2D shape, Vector2 pos, Vector2 size, Vector2 pivot = (0,0), Vector2 scale = (1,1), double rotAng = 0, Vector2 ofs = (0,0), int renderStyle = STYLE_Normal, double alpha = 1)
+	ui void DrawScope(TextureID id, bool anim, Shape2D shape, Vector2 pos, Vector2 size, double ang = 0, int renderStyle = STYLE_Normal, double alpha = 1, Vector2 anchor = (0,0))
     {
 		if (!shape)
 			return;
 		
-		if (!(scale ~== (1,1)))
-		{
-			size.x *= scale.x;
-			size.y *= scale.y;
-			
-			//pos.x += size.x/2 * pivot.x;
-			//pos.y += size.y/2 * pivot.y;
-			//ofs.x *= scale.x;
-			//ofs.y *= scale.y;
-		}
-		
 		let transform = new("Shape2DTransform");
+		transform.Translate(anchor);
 		transform.Scale(size);
-		transform.Rotate(rotAng);
-		transform.Translate(pos+ofs);
+		transform.Rotate(ang);
+		transform.Translate(pos);
 		shape.SetTransform(transform);
 		
 		Screen.DrawShape(id, anim, shape, DTA_LegacyRenderStyle, renderStyle, DTA_Alpha, alpha);
@@ -280,6 +287,8 @@ class ScopedWeapon : Weapon
 				cam.Destroy();
 		}
 		
+		bDrawScope = cam != null;
+		
 		if (!owner || !owner.player)
 			return;
 		
@@ -305,13 +314,15 @@ class ScopedWeapon : Weapon
 		
 		prevAngles = angles;
 		
-		bDrawScope = cam != null;
 		if (!bDrawScope)
 			return;
 		
 		Vector3 offset = f*forwardOffset + r*sideOffset + u*upOffset;
 		let psp = owner.player.GetPSprite(PSP_WEAPON);
-		offset += r*(weaponBob.x+psp.x)*swaySideMultiplier - u*(psp.y+weaponBob.y)*swayUpMultiplier;
+		double xOfs = psp.x;
+		if (psp.bMirror)
+			xOfs *= -1;
+		offset += r*(weaponBob.x+xOfs)*swaySideMultiplier - u*(psp.y-WEAPONTOP+weaponBob.y)*swayUpMultiplier;
 		
 		cam.SetXYZ(level.Vec3Offset((owner.pos.xy,owner.player.viewz), offset));
 		cam.angle = angles.x;
@@ -338,6 +349,43 @@ class ScopedWeapon : Weapon
 	{
 		if (invoker.cam)
 			invoker.cam.Destroy();
+	}
+	
+	action void A_ChangeScopeZoom(double zoomMulti = 1)
+	{
+		if (zoomMulti ~== 0)
+			return;
+		
+		invoker.CameraFOV = invoker.default.CameraFOV / zoomMulti;
+	}
+	
+	action void A_ChangeScopeFoV(double fov = 0, bool relative = true)
+	{
+		if (relative)
+			invoker.CameraFOV = invoker.default.CameraFOV - fov;
+		else
+			invoker.CameraFOV = fov;
+	}
+	
+	action bool IsScoped()
+	{
+		return invoker.cam != null;
+	}
+	
+	action double GetScopeZoom()
+	{
+		if (invoker.CameraFOV ~== 0)
+			return invoker.default.CameraFOV;
+		
+		return invoker.default.CameraFOV / invoker.CameraFOV;
+	}
+	
+	action double GetScopeFoV(bool relative = true)
+	{
+		if (relative)
+			return invoker.default.CameraFOV - invoker.CameraFOV;
+		
+		return invoker.CameraFOV;
 	}
 }
 
