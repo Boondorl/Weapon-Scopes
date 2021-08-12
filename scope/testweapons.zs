@@ -11,6 +11,7 @@ class ScopedChaingun : ScopedWeapon replaces Chaingun
 		Obituary "$OB_MPCHAINGUN";
 		Tag "$TAG_CHAINGUN";
 		
+		// Scope properties
 		CameraFOV 15;
 		ScopedWeapon.ScopeTexture "TROOA1";
 		ScopedWeapon.SwaySideMultiplier 1;
@@ -20,26 +21,50 @@ class ScopedChaingun : ScopedWeapon replaces Chaingun
 	States
 	{
 		Ready:
-			CHGG A 1 A_WeaponReady(!(player.oldButtons & BT_ZOOM) ? WRF_ALLOWZOOM : 0);
+			CHGG A 1
+			{
+				int flags;
+				if (IsScoped())
+				{
+					double zoom = GetScopeZoom();
+					if (zoom < 3)
+						flags |= WRF_ALLOWUSER1;
+					if (zoom > 1)
+						flags |= WRF_ALLOWUSER2;
+				}
+				
+				if (!(player.oldButtons & BT_ZOOM))
+					flags |= WRF_ALLOWZOOM;
+				
+				A_WeaponReady(flags);
+			}
 			Loop;
 			
 		Zoom:
 			CHGG A 1
 			{
-				if (IsScoped())
-				{
-					if (GetScopeZoom() >= 2)
-					{
-						A_ChangeScopeZoom();
-						A_Unscope();
-					}
-					else
-						A_ChangeScopeZoom(2);
-					
-					return;
-				}
+				if (!IsScoped())
+					A_ChangeScopeFoV(interpolate: false);
 				
 				A_Scope();
+			}
+			Goto Ready;
+			
+		User1:
+			CHGG A 1
+			{
+				double zoom = GetScopeZoom();
+				if (zoom < 3)
+					A_ChangeScopeZoom(min(zoom+0.1,3));
+			}
+			Goto Ready;
+			
+		User2:
+			CHGG A 1
+			{
+				double zoom = GetScopeZoom();
+				if (zoom > 1)
+					A_ChangeScopeZoom(max(zoom-0.1,1));
 			}
 			Goto Ready;
 			

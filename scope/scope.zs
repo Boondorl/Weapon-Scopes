@@ -5,9 +5,9 @@ class ScopeHandler : EventHandler
 	// Interpolation data
 	private ui Vector2 oldScale;
 	private ui double oldRotation;
-	private ui Vector3 oldPos;
+	private ui Vector2 oldPos;
+	private ui double oldFoV;
 	
-	private ui double oldFOV;
 	private ui Shape2D circle;
 	private ui TextureID lens;
 	
@@ -26,47 +26,49 @@ class ScopeHandler : EventHandler
 		else
 			psp.scale -= (0.01, 0.01);
 			
-		//psp.rotation += 1;
+		//psp.rotation += 2;
 		psp.bInterpolate = true;
-		psp.pivot = (0,0);
+		psp.pivot = (0.5,0.5);
 		psp.bPivotPercent = true;
-		psp.HAlign = PSPA_CENTER;
-		psp.VAlign = PSPA_CENTER;
+		psp.HAlign = PSPA_LEFT;
+		psp.VAlign = PSPA_TOP;
+		//psp.bFlip = true;
+		//psp.bMirror = true;
 	}
 	// END DEBUG
 	
 	override void UITick()
 	{
-		if (!circle)
-			circle = CreateCircle();
-		if (!lens.IsValid())
-			lens = TexMan.CheckForTexture("SCAMTEX1", TexMan.Type_Any);
-		
 		let weap = ScopedWeapon(players[consoleplayer].ReadyWeapon);
 		if (!weap)
 		{
 			oldRotation = 0;
 			oldScale = (1,1);
-			oldFov = 0;
+			oldFoV = 0;
+			oldPos = (0,WEAPONBOTTOM);
 			return;
 		}
 		
-		// Update scope if weapon camera FOV changed
-		double fov = weap.CameraFOV;
-		if (fov != oldFOV && weap.ShouldDrawScope())
-			TexMan.SetCameraToTexture(weap.GetCamera(), "SCAMTEX1", fov);
-		
-		oldFOV = fov;
 		let psp = players[consoleplayer].GetPSprite(PSP_WEAPON);
 		oldRotation = psp.rotation;
 		oldScale = psp.scale;
+		oldPos = (psp.x,psp.y) + weap.GetWeaponBobOffset();
+		oldFoV = weap.CameraFOV;
 	}
 	
 	override void RenderUnderlay(RenderEvent e)
 	{
 		let weap = ScopedWeapon(players[consoleplayer].ReadyWeapon);
-		if (!weap || !weap.ShouldDrawScope() || automapactive)
+		if (!weap || automapactive || !weap.ShouldDrawScope())
 			return;
+		
+		if (!circle)
+			circle = CreateCircle();
+		if (!lens.IsValid())
+			lens = TexMan.CheckForTexture("SCAMTEX1", TexMan.Type_Any);
+		
+		if (oldFoV != weap.CameraFOV)
+			TexMan.SetCameraToTexture(weap.GetCamera(), "SCAMTEX1", LerpFloat(weap.GetPrevFoV(), weap.CameraFOV, e.fracTic));
 		
 		// Account for the view port
 		int wOfs, hOfs, w, h;
@@ -83,22 +85,36 @@ class ScopeHandler : EventHandler
 		
 		// Get updated information about scope position and size
 		let psp = players[consoleplayer].GetPSprite(PSP_WEAPON);
-		Vector2 realPos = Lerp((psp.oldx,psp.oldy), (psp.x,psp.y), e.fracTic);
+		bool interpolate = psp.interpolateTic || psp.bInterpolate;
+		
+		Vector2 bob = weap.GetWeaponBobOffset();
+		Vector2 pos = (psp.x,psp.y) + bob;
+		Vector2 realPos;
+		if (psp.oldx != psp.x || interpolate || bob.x)
+			realPos.x = LerpFloat(oldPos.x, pos.x, e.fracTic);
+		else
+			realPos.x = pos.x;
 		if (psp.bMirror)
 			realPos.x *= -1;
 		
-		bool interpolate = psp.interpolateTic || psp.bInterpolate;
+		if (psp.oldy != psp.y || interpolate || bob.y)
+			realPos.y = LerpFloat(oldPos.y, pos.y, e.fracTic);
+		else
+			realPos.y = pos.y;
+		if (screenblocks >= 11)
+			realPos.y += weap.YAdjust;
+		
 		Vector2 scopeScale = interpolate ? Lerp(oldScale, psp.scale, e.fracTic) : psp.scale;
 		double scopeAngle = interpolate ? -LerpFloat(oldRotation, psp.rotation, e.fracTic) : -psp.rotation;
 		
-		// TODO: Sprite YAdjust in fullscreen mode
-		Vector2 scopePos = (wOfs + w/2 + realPos.x*scale.x, hOfs + h - 100*scale.y + realPos.y*scale.y);
-		Vector2 scopeOfs = (weap.renderWidthOffset*scale.x, -(WEAPONTOP+weap.renderHeightOffset)*scale.y);
+		Vector2 scopePos = (wOfs + w/2 + realPos.x*scale.x, hOfs + h/2 + realPos.y*scale.y);
+		Vector2 prevOfs = weap.GetPrevRenderOffset();
+		Vector2 scopeOfs = (LerpFloat(prevOfs.x, weap.renderWidthOffset, e.fracTic)*scale.x, -LerpFloat(prevOfs.y, weap.renderHeightOffset, e.fracTic)*scale.y);
 		if (psp.bMirror)
 			scopeOfs.x *= -1;
-		Vector2 scopeSize = TexMan.GetScaledSize(lens)*weap.scopeScale / 2 * multi;
+		Vector2 scopeSize = TexMan.GetScaledSize(lens)*LerpFloat(weap.GetPrevScale(), weap.scopeScale, e.fracTic) / 2 * multi;
 		
-		// Calculate the correct anchor point for scaling
+		// Calculate the correct anchor point for scaling and rotating
 		Vector2 pivot = psp.pivot;
 		Vector2 anchor;
 		switch (psp.HAlign)
@@ -151,22 +167,22 @@ class ScopeHandler : EventHandler
 		
 		anchor.x -= pivot.x;
 		anchor.y -= pivot.y;
-		scopePos.x -= scopeSize.x*anchor.x;
-		scopePos.y -= scopeSize.y*anchor.y;
+		Vector2 anchorOffset = (scopeSize.x*anchor.x, scopeSize.y*anchor.y);
+		scopePos -= anchorOffset;
 		
 		scopeSize.x *= scopeScale.x;
 		scopeSize.y *= scopeScale.y;
-		scopePos += Actor.RotateVector(scopeOfs, scopeAngle);
+		scopePos += scopeOfs;
 		
 		// Make sure it can't draw outside of the view port
 		int cx, cy, cw, ch;
 		[cx, cy, cw, ch] = Screen.GetClipRect();
 		Screen.SetClipRect(wOfs, hOfs, w, h);
 		
-		DrawScope(lens, false, circle, scopePos, scopeSize, anchor: anchor);
-		let id = weap.GetScopeTexture();
+		DrawScope(lens, false, circle, scopePos, scopeSize, scopeAngle, anchor: anchor, -scopeAngle);
+		let id = weap.GetScopeTextureID();
 		if (id.IsValid())
-			DrawScope(id, true, circle, scopePos, scopeSize, scopeAngle, players[consoleplayer].mo.GetRenderStyle(), psp.alpha, anchor);
+			DrawScope(id, true, circle, scopePos, scopeSize, scopeAngle, weap.ScopeRenderStyle(), psp.alpha, anchor);
 		
 		Screen.SetClipRect(cx, cy, cw, ch);
 	}
@@ -196,12 +212,13 @@ class ScopeHandler : EventHandler
 		return circle;
 	}
 	
-	ui void DrawScope(TextureID id, bool anim, Shape2D shape, Vector2 pos, Vector2 size, double ang = 0, int renderStyle = STYLE_Normal, double alpha = 1, Vector2 anchor = (0,0))
+	ui void DrawScope(TextureID id, bool anim, Shape2D shape, Vector2 pos, Vector2 size, double ang = 0, int renderStyle = STYLE_Normal, double alpha = 1, Vector2 anchor = (0,0), double anchorAng = 0)
     {
 		if (!shape)
 			return;
 		
 		let transform = new("Shape2DTransform");
+		transform.Rotate(anchorAng);
 		transform.Translate(anchor);
 		transform.Scale(size);
 		transform.Rotate(ang);
@@ -224,11 +241,21 @@ class ScopeHandler : EventHandler
 
 class ScopedWeapon : Weapon
 {
+	// Interpolation data
+	private Vector2 prevRenderOffset;
+	private double prevFoV;
+	private double prevScale;
+	
+	private Vector2 pro;
+	private double pf;
+	private double ps;
+	
 	private bool bDrawScope;
 	private ScopeCam cam;
 	private Vector2 weaponBob;
 	private Vector3 f, r, u;
 	private Vector3 prevAngles;
+	private int prevStyle;
 	
 	double renderHeightOffset;
 	double renderWidthOffset;
@@ -254,7 +281,32 @@ class ScopedWeapon : Weapon
 	{
 		Weapon.Kickback 100;
 		ScopedWeapon.ScopeScale 1;
-		ScopedWeapon.ForwardOffset 4;
+	}
+	
+	clearscope Vector2 GetPrevRenderOffset() const
+	{
+		return pro;
+	}
+	
+	clearscope double GetPrevFoV() const
+	{
+		return pf;
+	}
+	
+	clearscope double GetPrevScale() const
+	{
+		return ps;
+	}
+	
+	clearscope int ScopeRenderStyle() const
+	{
+		if (prevStyle != STYLE_None)
+			return prevStyle;
+		
+		if (!owner)
+			return GetRenderStyle();
+		
+		return owner.GetRenderStyle();
 	}
 	
 	clearscope bool ShouldDrawScope() const
@@ -267,18 +319,37 @@ class ScopedWeapon : Weapon
 		return cam;
 	}
 	
-	clearscope Vector2 WeaponBobOffset() const
+	clearscope Vector2 GetWeaponBobOffset() const
 	{
 		return weaponBob;
 	}
 	
-	clearscope TextureID GetScopeTexture() const
+	clearscope TextureID GetScopeTextureID() const
 	{
 		return TexMan.CheckForTexture(scopeTexture, TexMan.Type_Any);
 	}
 	
+	override void PostBeginPlay()
+	{
+		super.PostBeginPlay();
+		
+		ClearScopeInterpolation();
+	}
+	
+	override void AlterWeaponSprite(VisStyle vis, out int changed)
+	{
+		if (prevStyle != STYLE_None)
+			vis.RenderStyle = prevStyle;
+	}
+	
 	override void Tick()
 	{
+		pro = prevRenderOffset;
+		pf = prevFoV;
+		ps = prevScale;
+		
+		ClearScopeInterpolation();
+		
 		super.Tick();
 		
 		if (!owner || !owner.player || owner.health <= 0 || owner.player.ReadyWeapon != self)
@@ -287,7 +358,7 @@ class ScopedWeapon : Weapon
 				cam.Destroy();
 		}
 		
-		bDrawScope = cam != null;
+		bDrawScope = cam != null && (!owner || !owner.player || !(owner.player.cheats & CF_CHASECAM));
 		
 		if (!owner || !owner.player)
 			return;
@@ -315,7 +386,25 @@ class ScopedWeapon : Weapon
 		prevAngles = angles;
 		
 		if (!bDrawScope)
+		{
+			if (prevStyle != STYLE_None)
+			{
+				owner.A_SetRenderStyle(owner.alpha, prevStyle);
+				prevStyle = STYLE_None;
+			}
+			
 			return;
+		}
+		
+		if (owner.PlayerNumber() == consoleplayer)
+		{
+			int style = owner.GetRenderStyle();
+			if (style != STYLE_None)
+			{
+				prevStyle = style;
+				owner.A_SetRenderStyle(owner.alpha, STYLE_None);
+			}
+		}
 		
 		Vector3 offset = f*forwardOffset + r*sideOffset + u*upOffset;
 		let psp = owner.player.GetPSprite(PSP_WEAPON);
@@ -351,20 +440,89 @@ class ScopedWeapon : Weapon
 			invoker.cam.Destroy();
 	}
 	
-	action void A_ChangeScopeZoom(double zoomMulti = 1)
+	action void A_ChangeScopeZoom(double zoomMulti = 1, bool interpolate = true)
 	{
 		if (zoomMulti ~== 0)
 			return;
 		
 		invoker.CameraFOV = invoker.default.CameraFOV / zoomMulti;
+		
+		if (!interpolate)
+			ClearScopeInterpolation(false, true, false);
 	}
 	
-	action void A_ChangeScopeFoV(double fov = 0, bool relative = true)
+	action void A_ChangeScopeFoV(double fov = 0, bool relative = true, bool interpolate = true)
 	{
 		if (relative)
 			invoker.CameraFOV = invoker.default.CameraFOV - fov;
 		else
 			invoker.CameraFOV = fov;
+		
+		if (!interpolate)
+			ClearScopeInterpolation(false, true, false);
+	}
+	
+	action void A_ScopeSway(double x = 0, double y = 0, bool relative = true)
+	{
+		if (relative)
+		{
+			invoker.swaySideMultiplier += x;
+			invoker.swayUpMultiplier += y;
+		}
+		else
+		{
+			invoker.swaySideMultiplier = x;
+			invoker.swayUpMultiplier = y;
+		}
+	}
+	
+	action void A_ScopeOffset(double f = 0, double s = 0, double u = 0, bool relative = true)
+	{
+		if (relative)
+		{
+			invoker.forwardOffset += f;
+			invoker.sideOffset += s;
+			invoker.upOffset += u;
+		}
+		else
+		{
+			invoker.forwardOffset = f;
+			invoker.sideOffset = s;
+			invoker.upOffset = u;
+		}
+	}
+	
+	action void A_ScopeRenderOffset(double x = 0, double y = 0, bool relative = true, bool interpolate = true)
+	{
+		if (relative)
+		{
+			invoker.RenderWidthOffset += x;
+			invoker.RenderHeightOffset += y;
+		}
+		else
+		{
+			invoker.RenderWidthOffset = x;
+			invoker.RenderHeightOffset = y;
+		}
+		
+		if (!interpolate)
+			ClearScopeInterpolation(true, false, false);
+	}
+	
+	action void A_SetScopeTexture(string name)
+	{
+		invoker.scopeTexture = name;
+	}
+	
+	action void A_SetScopeScale(double s, bool relative = true, bool interpolate = true)
+	{
+		if (relative)
+			invoker.scopeScale += s;
+		else
+			invoker.scopeScale = s;
+		
+		if (!interpolate)
+			ClearScopeInterpolation(false, false);
 	}
 	
 	action bool IsScoped()
@@ -386,6 +544,51 @@ class ScopedWeapon : Weapon
 			return invoker.default.CameraFOV - invoker.CameraFOV;
 		
 		return invoker.CameraFOV;
+	}
+	
+	action double GetScopeForwardOffset()
+	{
+		return invoker.forwardOffset;
+	}
+	
+	action double GetScopeSideOffset()
+	{
+		return invoker.sideOffset;
+	}
+	
+	action double GetScopeUpOffset()
+	{
+		return invoker.upOffset;
+	}
+	
+	action double GetScopeWidthOffset()
+	{
+		return invoker.RenderWidthOffset;
+	}
+	
+	action double GetScopeHeightOffset()
+	{
+		return invoker.RenderHeightOffset;
+	}
+	
+	action double GetScopeScale()
+	{
+		return invoker.scopeScale;
+	}
+	
+	action string GetScopeTexture()
+	{
+		return invoker.scopeTexture;
+	}
+	
+	action void ClearScopeInterpolation(bool rendering = true, bool fov = true, bool scale = true)
+	{
+		if (rendering)
+			invoker.prevRenderOffset = (invoker.RenderWidthOffset, invoker.RenderHeightOffset);
+		if (fov)
+			invoker.prevFoV = invoker.CameraFOV;
+		if (scale)
+			invoker.prevScale = invoker.scopeScale;
 	}
 }
 
