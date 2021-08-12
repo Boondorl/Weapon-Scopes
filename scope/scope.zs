@@ -37,16 +37,20 @@ class ScopeHandler : EventHandler
 	override void RenderUnderlay(RenderEvent e)
 	{
 		let weap = ScopedWeapon(players[consoleplayer].ReadyWeapon);
-		if (!weap || automapactive || !weap.ShouldDrawScope())
+		if (!weap)
+			return;
+		
+		let cam = weap.GetCamera();
+		if (cam && oldFoV != weap.CameraFOV)
+			TexMan.SetCameraToTexture(cam, "SCAMTEX1", LerpFloat(weap.GetPrevFoV(), weap.CameraFOV, e.fracTic));
+		
+		if (automapactive || !weap.ShouldDrawScope())
 			return;
 		
 		if (!circle)
 			circle = CreateCircle();
 		if (!lens.IsValid())
 			lens = TexMan.CheckForTexture("SCAMTEX1", TexMan.Type_Any);
-		
-		if (oldFoV != weap.CameraFOV)
-			TexMan.SetCameraToTexture(weap.GetCamera(), "SCAMTEX1", LerpFloat(weap.GetPrevFoV(), weap.CameraFOV, e.fracTic));
 		
 		// Account for the view port
 		int wOfs, hOfs, w, h;
@@ -81,20 +85,13 @@ class ScopeHandler : EventHandler
 		if (screenblocks >= 11)
 			realPos.y += weap.YAdjust;
 		
-		Vector2 prevOfs = weap.GetPrevRenderOffset();
-		Vector2 curOfs = (weap.renderWidthOffset, weap.renderHeightOffset);
-		Vector2 scopeOfs;
-		if (oldRotation != psp.rotation && prevOfs != curOfs)
-			scopeOfs = Slerp(prevOfs, curOfs, e.fracTic);
-		else
-			scopeOfs = Lerp(prevOfs, curOfs, e.fracTic);
+		Vector2 scopeOfs = Lerp(weap.GetPrevRenderOffset(), (weap.renderWidthOffset,weap.renderHeightOffset), e.fracTic);
 		if (psp.bFlip)
 			scopeOfs.x *= -1;
 		scopeOfs.x *= scale.x;
 		scopeOfs.y *= -scale.y;
 		
-		Vector2 curBob = weap.GetWeaponBobOffset();
-		Vector2 bobOfs = oldBob != curBob ? Slerp(oldBob, curBob, e.fracTic) : curBob;
+		Vector2 bobOfs = Lerp(oldBob, weap.GetWeaponBobOffset(), e.fracTic);
 		bobOfs.x *= scale.x;
 		bobOfs.y *= scale.y;
 		
@@ -129,13 +126,14 @@ class ScopeHandler : EventHandler
 		
 		double angStep = 360. / verts;
 		double ang;
+		double mod = 1 / 1.2;
 		for (uint i = 0; i < verts; ++i)
 		{
 			double c = cos(ang);
 			double s = sin(ang);
 			
 			circle.PushVertex((c,s));
-			circle.PushCoord(((c+1)/2, (s+1)/2));
+			circle.PushCoord(((c+1)/2, (s*mod+1)/2));
 			
 			if (i+2 < verts)
 				circle.PushTriangle(0, i+1, i+2);
@@ -168,16 +166,6 @@ class ScopeHandler : EventHandler
 	ui double LerpFloat(double a, double b, double t)
 	{
 		return a*(1-t) + b*t;
-	}
-	
-	ui Vector2 Slerp(Vector2 a, Vector2 b, double t)
-	{
-		double theta = acos(a.Unit() dot b.Unit());
-		double s = sin(theta);
-		if (!s)
-			return b;
-		
-		return (sin((1-t)*theta)/s)*a + (sin(t*theta)/s)*b;
 	}
 }
 
