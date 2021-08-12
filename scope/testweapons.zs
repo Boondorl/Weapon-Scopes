@@ -13,6 +13,7 @@ class ScopedChaingun : ScopedWeapon replaces Chaingun
 		
 		// Scope properties
 		CameraFOV 15;
+		ScopedWeapon.RenderHeightOffset 32;
 		ScopedWeapon.ScopeTexture "TROOA1";
 		ScopedWeapon.SwaySideMultiplier 1;
 		ScopedWeapon.SwayUpMultiplier 1;

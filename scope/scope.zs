@@ -6,36 +6,11 @@ class ScopeHandler : EventHandler
 	private ui Vector2 oldScale;
 	private ui double oldRotation;
 	private ui Vector2 oldPos;
+	private ui Vector2 oldBob;
 	private ui double oldFoV;
 	
 	private ui Shape2D circle;
 	private ui TextureID lens;
-	
-	// DEBUG
-	bool bSize;
-	override void WorldTick()
-	{
-		let psp = players[consoleplayer].GetPSprite(PSP_WEAPON);
-		if (psp.scale.x >= 1.5)
-			bSize = false;
-		else if (psp.scale.x <= 0.75)
-			bSize = true;
-			
-		if (bSize)
-			psp.scale += (0.01, 0.01);
-		else
-			psp.scale -= (0.01, 0.01);
-			
-		//psp.rotation += 2;
-		psp.bInterpolate = true;
-		psp.pivot = (0.5,0.5);
-		psp.bPivotPercent = true;
-		psp.HAlign = PSPA_LEFT;
-		psp.VAlign = PSPA_TOP;
-		//psp.bFlip = true;
-		//psp.bMirror = true;
-	}
-	// END DEBUG
 	
 	override void UITick()
 	{
@@ -46,16 +21,19 @@ class ScopeHandler : EventHandler
 			oldScale = (1,1);
 			oldFoV = 0;
 			oldPos = (0,WEAPONBOTTOM);
+			oldBob = (0,0);
 			return;
 		}
 		
 		let psp = players[consoleplayer].GetPSprite(PSP_WEAPON);
 		oldRotation = psp.rotation;
 		oldScale = psp.scale;
-		oldPos = (psp.x,psp.y) + weap.GetWeaponBobOffset();
+		oldPos = (psp.x,psp.y);
+		oldBob = weap.GetWeaponBobOffset();
 		oldFoV = weap.CameraFOV;
 	}
 	
+	// TODO: Forced aspect ratio
 	override void RenderUnderlay(RenderEvent e)
 	{
 		let weap = ScopedWeapon(players[consoleplayer].ReadyWeapon);
@@ -87,102 +65,58 @@ class ScopeHandler : EventHandler
 		let psp = players[consoleplayer].GetPSprite(PSP_WEAPON);
 		bool interpolate = psp.interpolateTic || psp.bInterpolate;
 		
-		Vector2 bob = weap.GetWeaponBobOffset();
-		Vector2 pos = (psp.x,psp.y) + bob;
+		Vector2 pos = (psp.x, psp.y);
 		Vector2 realPos;
-		if (psp.oldx != psp.x || interpolate || bob.x)
+		if (psp.oldx != psp.x || interpolate)
 			realPos.x = LerpFloat(oldPos.x, pos.x, e.fracTic);
 		else
 			realPos.x = pos.x;
 		if (psp.bMirror)
 			realPos.x *= -1;
 		
-		if (psp.oldy != psp.y || interpolate || bob.y)
+		if (psp.oldy != psp.y || interpolate)
 			realPos.y = LerpFloat(oldPos.y, pos.y, e.fracTic);
 		else
 			realPos.y = pos.y;
 		if (screenblocks >= 11)
 			realPos.y += weap.YAdjust;
 		
-		Vector2 scopeScale = interpolate ? Lerp(oldScale, psp.scale, e.fracTic) : psp.scale;
-		double scopeAngle = interpolate ? -LerpFloat(oldRotation, psp.rotation, e.fracTic) : -psp.rotation;
-		
-		Vector2 scopePos = (wOfs + w/2 + realPos.x*scale.x, hOfs + h/2 + realPos.y*scale.y);
 		Vector2 prevOfs = weap.GetPrevRenderOffset();
-		Vector2 scopeOfs = (LerpFloat(prevOfs.x, weap.renderWidthOffset, e.fracTic)*scale.x, -LerpFloat(prevOfs.y, weap.renderHeightOffset, e.fracTic)*scale.y);
-		if (psp.bMirror)
-			scopeOfs.x *= -1;
-		Vector2 scopeSize = TexMan.GetScaledSize(lens)*LerpFloat(weap.GetPrevScale(), weap.scopeScale, e.fracTic) / 2 * multi;
-		
-		// Calculate the correct anchor point for scaling and rotating
-		Vector2 pivot = psp.pivot;
-		Vector2 anchor;
-		switch (psp.HAlign)
-		{
-			case PSPA_LEFT:
-				anchor.x = 0;
-				break;
-				
-			case PSPA_RIGHT:
-				anchor.x = 1;
-				break;
-				
-			default:
-				anchor.x = 0.5;
-				break;
-		}
-		
-		switch (psp.VAlign)
-		{
-			case PSPA_TOP:
-				anchor.y = 0;
-				break;
-				
-			case PSPA_BOTTOM:
-				anchor.y = 1;
-				break;
-				
-			default:
-				anchor.y = 0.5;
-				break;
-		}
-		
-		if (psp.bFlip)
-		{
-			scopeAngle *= -1;
-			anchor.x = 1 - anchor.x;
-			pivot.x *= -1;
-		}
-		
-		anchor -= (0.5,0.5);
-		anchor *= -2;
-		
-		if (psp.bPivotPercent)
-			pivot *= 2;
+		Vector2 curOfs = (weap.renderWidthOffset, weap.renderHeightOffset);
+		Vector2 scopeOfs;
+		if (oldRotation != psp.rotation && prevOfs != curOfs)
+			scopeOfs = Slerp(prevOfs, curOfs, e.fracTic);
 		else
-		{
-			pivot.x = pivot.x*scale.x / scopeSize.x;
-			pivot.y = pivot.y*scale.y / scopeSize.y;
-		}
+			scopeOfs = Lerp(prevOfs, curOfs, e.fracTic);
+		if (psp.bFlip)
+			scopeOfs.x *= -1;
+		scopeOfs.x *= scale.x;
+		scopeOfs.y *= -scale.y;
 		
-		anchor.x -= pivot.x;
-		anchor.y -= pivot.y;
-		Vector2 anchorOffset = (scopeSize.x*anchor.x, scopeSize.y*anchor.y);
-		scopePos -= anchorOffset;
+		Vector2 curBob = weap.GetWeaponBobOffset();
+		Vector2 bobOfs = oldBob != curBob ? Slerp(oldBob, curBob, e.fracTic) : curBob;
+		bobOfs.x *= scale.x;
+		bobOfs.y *= scale.y;
 		
+		Vector2 scopePos = (wOfs + w/2 + realPos.x*scale.x, hOfs + h/2 + realPos.y*scale.y) + scopeOfs + bobOfs;
+		double scopeAngle = interpolate ? -LerpFloat(oldRotation, psp.rotation, e.fracTic) : -psp.rotation;
+		if (psp.bFlip)
+			scopeAngle *= -1;
+		
+		Vector2 scopeSize = TexMan.GetScaledSize(lens)*LerpFloat(weap.GetPrevScale(), weap.scopeScale, e.fracTic) / 2 * multi;
+		Vector2 scopeScale = interpolate ? Lerp(oldScale, psp.scale, e.fracTic) : psp.scale;
 		scopeSize.x *= scopeScale.x;
 		scopeSize.y *= scopeScale.y;
-		scopePos += scopeOfs;
 		
 		// Make sure it can't draw outside of the view port
 		int cx, cy, cw, ch;
 		[cx, cy, cw, ch] = Screen.GetClipRect();
 		Screen.SetClipRect(wOfs, hOfs, w, h);
 		
-		DrawScope(lens, false, circle, scopePos, scopeSize, scopeAngle, anchor: anchor, -scopeAngle);
+		DrawScope(lens, false, circle, scopePos, scopeSize);
 		let id = weap.GetScopeTextureID();
 		if (id.IsValid())
-			DrawScope(id, true, circle, scopePos, scopeSize, scopeAngle, weap.ScopeRenderStyle(), psp.alpha, anchor);
+			DrawScope(id, true, circle, scopePos, scopeSize, scopeAngle, weap.ScopeRenderStyle(), psp.alpha);
 		
 		Screen.SetClipRect(cx, cy, cw, ch);
 	}
@@ -212,14 +146,12 @@ class ScopeHandler : EventHandler
 		return circle;
 	}
 	
-	ui void DrawScope(TextureID id, bool anim, Shape2D shape, Vector2 pos, Vector2 size, double ang = 0, int renderStyle = STYLE_Normal, double alpha = 1, Vector2 anchor = (0,0), double anchorAng = 0)
+	ui void DrawScope(TextureID id, bool anim, Shape2D shape, Vector2 pos, Vector2 size, double ang = 0, int renderStyle = STYLE_Normal, double alpha = 1)
     {
 		if (!shape)
 			return;
 		
 		let transform = new("Shape2DTransform");
-		transform.Rotate(anchorAng);
-		transform.Translate(anchor);
 		transform.Scale(size);
 		transform.Rotate(ang);
 		transform.Translate(pos);
@@ -236,6 +168,16 @@ class ScopeHandler : EventHandler
 	ui double LerpFloat(double a, double b, double t)
 	{
 		return a*(1-t) + b*t;
+	}
+	
+	ui Vector2 Slerp(Vector2 a, Vector2 b, double t)
+	{
+		double theta = acos(a.Unit() dot b.Unit());
+		double s = sin(theta);
+		if (!s)
+			return b;
+		
+		return (sin((1-t)*theta)/s)*a + (sin(t*theta)/s)*b;
 	}
 }
 
@@ -279,7 +221,6 @@ class ScopedWeapon : Weapon
 	
 	Default
 	{
-		Weapon.Kickback 100;
 		ScopedWeapon.ScopeScale 1;
 	}
 	
