@@ -1,4 +1,4 @@
-//version "2.4"
+//version "4.5"
 
 class ScopeHandler : EventHandler
 {
@@ -9,8 +9,8 @@ class ScopeHandler : EventHandler
 	private ui Vector2 oldBob;
 	private ui double oldFoV;
 	
-	private ui Shape2D circle;
-	private ui TextureID lens;
+	private transient ui Shape2D circle;
+	private transient ui TextureID lens;
 	
 	override void UITick()
 	{

@@ -1,10 +1,10 @@
 class ScopedChaingun : ScopedWeapon replaces Chaingun
 {
+	// Variables for handling recoil
 	private Vector2 recoilOffset;
 	private double recoilScale;
 	private int recoilTics;
 	private int recoilCounter;
-	private bool inTilt;
 	
 	Default
 	{
@@ -17,7 +17,7 @@ class ScopedChaingun : ScopedWeapon replaces Chaingun
 		Obituary "$OB_MPCHAINGUN";
 		Tag "$TAG_CHAINGUN";
 		
-		// Scope properties
+		// Scope-specific properties
 		CameraFOV 15;
 		ScopedWeapon.RenderHeightOffset 32;
 		ScopedWeapon.ScopeTexture "CROSSHAI";
@@ -34,9 +34,7 @@ class ScopedChaingun : ScopedWeapon replaces Chaingun
 				bool scoped = IsScoped();
 				if (scoped)
 				{
-					if (!(player.oldButtons & BT_RELOAD))
-						flags |= WRF_ALLOWRELOAD;
-					
+					// If scoped, allow the ability to change the zoom level
 					double zoom = GetScopeZoom();
 					if (zoom < 3)
 						flags |= WRF_ALLOWUSER1;
@@ -48,9 +46,11 @@ class ScopedChaingun : ScopedWeapon replaces Chaingun
 					flags |= WRF_ALLOWZOOM;
 				
 				A_WeaponReady(flags);
+				A_OverlayScale(PSP_WEAPON, 1, 0, WOF_INTERPOLATE);
 				
+				// Shake a little when scoped as well
 				if (scoped)
-					A_WeaponOffset(0, WEAPONTOP+frandom[Chaingun](-0.25,0.25), WOF_INTERPOLATE);
+					A_WeaponOffset(frandom[Chaingun](-0.25,0.25), WEAPONTOP-frandom[Chaingun](-0.25,0.25), WOF_INTERPOLATE);
 			}
 			Loop;
 			
@@ -58,13 +58,14 @@ class ScopedChaingun : ScopedWeapon replaces Chaingun
 			CHGG A 1
 			{
 				if (!IsScoped())
-					A_ChangeScopeFoV(interpolate: false);
+					A_ChangeScopeFoV(interpolate: false); // Reset the FoV when bringing up the scope
 				
 				A_Scope();
 				A_WeaponReady();
 			}
 			Goto Ready;
 			
+		// Zoom in
 		User1:
 			CHGG A 1
 			{
@@ -75,7 +76,8 @@ class ScopedChaingun : ScopedWeapon replaces Chaingun
 				A_WeaponReady();
 			}
 			Goto Ready;
-			
+		
+		// Zoom out
 		User2:
 			CHGG A 1
 			{
@@ -83,14 +85,6 @@ class ScopedChaingun : ScopedWeapon replaces Chaingun
 				if (zoom > 1)
 					A_ChangeScopeZoom(max(zoom-0.1,1));
 				
-				A_WeaponReady();
-			}
-			Goto Ready;
-			
-		Reload:
-			CHGG A 1
-			{
-				invoker.inTilt = !invoker.inTilt;
 				A_WeaponReady();
 			}
 			Goto Ready;
@@ -105,14 +99,19 @@ class ScopedChaingun : ScopedWeapon replaces Chaingun
 			Loop;
 			
 		Fire:
-			CHGG AB 3 A_FireNewCGun;
+			CHGG A 1 A_FireNewCGun;
+			CHGG AA 1 A_WeaponRecoil;
+			CHGG B 1 A_FireNewCGun;
+			CHGG BB 1 A_WeaponRecoil;
 			CHGG B 0 A_ReFire;
 			Goto Ready;
 			
 		Flash:
-			CHGF A 4 Bright A_Light1;
+			CHGF A 0 A_Light1;
+			CHGF AAA 1 Bright A_WeaponRecoil(OverlayID());
 			Goto LightDone;
-			CHGF B 4 Bright A_Light2;
+			CHGF B 0 A_Light2;
+			CHGF BBB 1 Bright A_WeaponRecoil(OverlayID());
 			Goto LightDone;
 			
 		Spawn:
@@ -120,96 +119,35 @@ class ScopedChaingun : ScopedWeapon replaces Chaingun
 			Stop;
 	}
 	
+	// Set recoil properties
 	action void A_FireNewCGun()
 	{
+		invoker.recoilOffset = (frandom[Chaingun](-0.5,1.5), frandom[Chaingun](2,4));
+		invoker.recoilScale = frandom[Chaingun](1.025,1.05);
+		invoker.recoilTics = 3;
+		invoker.recoilCounter = 0;
+		
 		A_FireCGun();
-		if (IsScoped())
-		{
-			double r = player.GetPSprite(PSP_WEAPON).rotation;
-			invoker.recoilOffset = RotateVector((frandom[Chaingun](-1,3), frandom[Chaingun](2,6)), r);
-			invoker.recoilScale = frandom[Chaingun](1.05,1.1);
-			invoker.recoilTics = player.GetPSprite(PSP_WEAPON).tics;
-			invoker.recoilCounter = 0;
-		}
+		A_WeaponRecoil();
 	}
 	
-	override void OwnerDied()
+	// Handles the weapon offsetting and scaling from recoil
+	action void A_WeaponRecoil(int id = PSP_WEAPON)
 	{
-		recoilTics = 0;
-	}
-	
-	override void DoEffect()
-	{
-		if (!owner || !owner.player || owner.player.ReadyWeapon != self)
-		{
-			recoilTics = 0;
-			return;
-		}
-		
-		if (IsScoped())
-		{
-			bobStyle = Bob_InverseSmooth;
-			bobRangeX = 0.2;
-			bobRangeY = 0.1;
-			bobSpeed = 1.5;
-		}
-		else
-		{
-			bobStyle = default.bobStyle;
-			bobRangeX = default.bobRangeX;
-			bobRangeY = default.bobRangeY;
-			bobSpeed = default.bobSpeed;
-		}
-		
-		let psp = owner.player.GetPSprite(PSP_WEAPON);
-		psp.bInterpolate = true;
-		psp.VAlign = PSPA_BOTTOM;
-		psp.HAlign = PSPA_CENTER;
-		
-		if (inTilt)
-		{
-			if (psp.rotation < 5)
-				++psp.rotation;
-			
-			psp.x = psp.rotation*2;
-			Vector2 rot = RotateVector((default.renderWidthOffset, default.renderHeightOffset), psp.rotation*5);
-			renderWidthOffset = rot.x;
-			renderHeightOffset = rot.y;
-		}
-		else
-		{
-			if (psp.rotation > 0)
-				--psp.rotation;
-			
-			psp.x = psp.rotation*2;
-			Vector2 rot = RotateVector((default.renderWidthOffset, default.renderHeightOffset), psp.rotation*5);
-			renderWidthOffset = rot.x;
-			renderHeightOffset = rot.y;
-		}
-		
-		if (recoilTics <= 0)
+		if (invoker.recoilTics <= 0 || invoker.recoilCounter >= invoker.recoilTics)
 			return;
 		
-		double mod = (recoilTics - recoilCounter++) / recoilTics;
-		if (recoilOffset.x)
-			psp.x += recoilOffset.x*mod;
-		if (recoilOffset.y)
-			psp.y = WEAPONTOP - recoilOffset.y*mod;
-		if (recoilScale)
-		{
-			double diff = 1 + (recoilScale - 1)*mod;
-			psp.scale = (diff, diff);
-			let f = owner.player.FindPSprite(PSP_FLASH);
-			if (f)
-			{
-				f.rotation = psp.rotation;
-				f.scale = (diff, diff);
-				if (recoilCounter > 1)
-					f.bInterpolate = true;
-			}
-		}
+		A_OverlayPivotAlign(id, PSPA_CENTER, PSPA_BOTTOM);
 		
-		if (recoilCounter >= recoilTics)
-			recoilTics = 0;
+		double ratio = double(invoker.recoilTics - invoker.recoilCounter) / invoker.recoilTics;
+		A_OverlayScale(id, 1 + (invoker.recoilScale-1)*ratio, 0, WOF_INTERPOLATE);
+		
+		if (id == PSP_WEAPON)
+		{
+			++invoker.recoilCounter;
+			
+			Vector2 offset = invoker.recoilOffset * ratio;
+			A_OverlayOffset(id, offset.x, WEAPONTOP - offset.y, WOF_INTERPOLATE); 
+		}
 	}
 }
