@@ -81,7 +81,6 @@ class ScopeHandler : EventHandler
 		
 		// Make sure scope stays proportional to resolution (based on 1920x1080) and viewport
 		double multi = h / (hOfs*2. + h) * height / 1080.;
-		double xScale = width / (height*aspect); // Forced aspect correction
 		
 		// Get updated information about scope position and size
 		let psp = player.GetPSprite(PSP_WEAPON);
@@ -118,6 +117,7 @@ class ScopeHandler : EventHandler
 		if (psp.bFlip)
 			scopeAngle *= -1;
 		
+		double xScale = width / (height*aspect); // Forced aspect correction
 		Vector2 scopeSize = TexMan.GetScaledSize(lens)*LerpFloat(weap.GetPrevScale(), weap.scopeScale, e.fracTic) / 2 * multi;
 		Vector2 scopeScale = interpolate ? Lerp(prev[pnum].scale, psp.scale, e.fracTic) : psp.scale;
 		scopeSize.x *= scopeScale.x * xScale;
@@ -128,7 +128,7 @@ class ScopeHandler : EventHandler
 		[cx, cy, cw, ch] = Screen.GetClipRect();
 		Screen.SetClipRect(wOfs, hOfs, w, h);
 		
-		DrawScope(lens, false, circle, scopePos, scopeSize);
+		DrawScope(lens, false, circle, scopePos, scopeSize, scopeAngle, baseAng: -scopeAngle);
 		let id = weap.GetScopeTextureID();
 		if (id.IsValid())
 			DrawScope(id, true, circle, scopePos, scopeSize, scopeAngle, weap.ScopeRenderStyle(), psp.alpha);
@@ -162,12 +162,13 @@ class ScopeHandler : EventHandler
 		return circle;
 	}
 	
-	ui void DrawScope(TextureID id, bool anim, Shape2D shape, Vector2 pos, Vector2 size, double ang = 0, int renderStyle = STYLE_Normal, double alpha = 1)
+	ui void DrawScope(TextureID id, bool anim, Shape2D shape, Vector2 pos, Vector2 size, double ang = 0, int renderStyle = STYLE_Normal, double alpha = 1, double baseAng = 0)
     {
 		if (!shape)
 			return;
 		
 		let transform = new("Shape2DTransform");
+		transform.Rotate(baseAng);
 		transform.Scale(size);
 		transform.Rotate(ang);
 		transform.Translate(pos);
