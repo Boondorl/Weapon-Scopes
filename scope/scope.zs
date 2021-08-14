@@ -1,47 +1,59 @@
 //version "4.5"
+struct ScopeData ui
+{
+	Vector2 scale;
+	double rotation;
+	Vector2 pos;
+	Vector2 bob;
+}
 
 class ScopeHandler : EventHandler
 {
 	// Interpolation data
-	private ui Vector2 oldScale;
-	private ui double oldRotation;
-	private ui Vector2 oldPos;
-	private ui Vector2 oldBob;
-	private ui double oldFoV;
+	private ui ScopeData prev[MAXPLAYERS];
 	
 	private transient ui Shape2D circle;
 	private transient ui TextureID lens;
 	
 	override void UITick()
 	{
-		let weap = ScopedWeapon(players[consoleplayer].ReadyWeapon);
-		if (!weap)
+		// Iterate through everyone for better multiplayer compatibility
+		for (uint i = 0; i < MAXPLAYERS; ++i)
 		{
-			oldRotation = 0;
-			oldScale = (1,1);
-			oldFoV = 0;
-			oldPos = (0,WEAPONBOTTOM);
-			oldBob = (0,0);
-			return;
+			if (!playerInGame[i])
+				continue;
+			
+			let weap = ScopedWeapon(players[i].ReadyWeapon);
+			if (!weap)
+			{
+				prev[i].scale = (1,1);
+				prev[i].rotation = 0;
+				prev[i].pos = (0,WEAPONBOTTOM);
+				prev[i].bob = (0,0);
+				continue;
+			}
+			
+			let psp = players[i].GetPSprite(PSP_WEAPON);
+			prev[i].scale = psp.scale;
+			prev[i].rotation = psp.rotation;
+			prev[i].pos = (psp.x,psp.y);
+			prev[i].bob = weap.GetWeaponBobOffset();
 		}
-		
-		let psp = players[consoleplayer].GetPSprite(PSP_WEAPON);
-		oldRotation = psp.rotation;
-		oldScale = psp.scale;
-		oldPos = (psp.x,psp.y);
-		oldBob = weap.GetWeaponBobOffset();
-		oldFoV = weap.CameraFOV;
 	}
 	
 	// TODO: Forced aspect ratio
 	override void RenderUnderlay(RenderEvent e)
 	{
-		let weap = ScopedWeapon(players[consoleplayer].ReadyWeapon);
+		let player = players[consoleplayer].camera.player;
+		if (!player || !player.camera.player)
+			return;
+		
+		let weap = ScopedWeapon(player.ReadyWeapon);
 		if (!weap)
 			return;
 		
 		let cam = weap.GetCamera();
-		if (cam && oldFoV != weap.CameraFOV)
+		if (cam)
 			TexMan.SetCameraToTexture(cam, "SCAMTEX1", LerpFloat(weap.GetPrevFoV(), weap.CameraFOV, e.fracTic));
 		
 		if (automapactive || !weap.ShouldDrawScope())
@@ -51,6 +63,8 @@ class ScopeHandler : EventHandler
 			circle = CreateCircle();
 		if (!lens.IsValid())
 			lens = TexMan.CheckForTexture("SCAMTEX1", TexMan.Type_Any);
+		
+		int pnum = player.mo.PlayerNumber();
 		
 		// Account for the view port
 		int wOfs, hOfs, w, h;
@@ -66,20 +80,20 @@ class ScopeHandler : EventHandler
 		double multi = h / (hOfs*2. + h) * height / 1080.;
 		
 		// Get updated information about scope position and size
-		let psp = players[consoleplayer].GetPSprite(PSP_WEAPON);
+		let psp = player.GetPSprite(PSP_WEAPON);
 		bool interpolate = psp.interpolateTic || psp.bInterpolate;
 		
 		Vector2 pos = (psp.x, psp.y);
 		Vector2 realPos;
 		if (psp.oldx != psp.x || interpolate)
-			realPos.x = LerpFloat(oldPos.x, pos.x, e.fracTic);
+			realPos.x = LerpFloat(prev[pnum].pos.x, pos.x, e.fracTic);
 		else
 			realPos.x = pos.x;
 		if (psp.bMirror)
 			realPos.x *= -1;
 		
 		if (psp.oldy != psp.y || interpolate)
-			realPos.y = LerpFloat(oldPos.y, pos.y, e.fracTic);
+			realPos.y = LerpFloat(prev[pnum].pos.y, pos.y, e.fracTic);
 		else
 			realPos.y = pos.y;
 		if (screenblocks >= 11)
@@ -91,17 +105,17 @@ class ScopeHandler : EventHandler
 		scopeOfs.x *= scale.x;
 		scopeOfs.y *= -scale.y;
 		
-		Vector2 bobOfs = Lerp(oldBob, weap.GetWeaponBobOffset(), e.fracTic);
+		Vector2 bobOfs = Lerp(prev[pnum].bob, weap.GetWeaponBobOffset(), e.fracTic);
 		bobOfs.x *= scale.x;
 		bobOfs.y *= scale.y;
 		
 		Vector2 scopePos = (wOfs + w/2 + realPos.x*scale.x, hOfs + h/2 + realPos.y*scale.y) + scopeOfs + bobOfs;
-		double scopeAngle = interpolate ? -LerpFloat(oldRotation, psp.rotation, e.fracTic) : -psp.rotation;
+		double scopeAngle = interpolate ? -LerpFloat(prev[pnum].rotation, psp.rotation, e.fracTic) : -psp.rotation;
 		if (psp.bFlip)
 			scopeAngle *= -1;
 		
 		Vector2 scopeSize = TexMan.GetScaledSize(lens)*LerpFloat(weap.GetPrevScale(), weap.scopeScale, e.fracTic) / 2 * multi;
-		Vector2 scopeScale = interpolate ? Lerp(oldScale, psp.scale, e.fracTic) : psp.scale;
+		Vector2 scopeScale = interpolate ? Lerp(prev[pnum].scale, psp.scale, e.fracTic) : psp.scale;
 		scopeSize.x *= scopeScale.x;
 		scopeSize.y *= scopeScale.y;
 		
@@ -263,6 +277,7 @@ class ScopedWeapon : Weapon
 		super.PostBeginPlay();
 		
 		ClearScopeInterpolation();
+		prevStyle = STYLE_None;
 	}
 	
 	override void AlterWeaponSprite(VisStyle vis, out int changed)
@@ -287,7 +302,7 @@ class ScopedWeapon : Weapon
 				cam.Destroy();
 		}
 		
-		bDrawScope = cam != null && (!owner || !owner.player || !(owner.player.cheats & CF_CHASECAM));
+		bDrawScope = cam != null && owner && owner.player && !(owner.player.cheats & CF_CHASECAM);
 		
 		if (!owner || !owner.player)
 			return;
@@ -314,7 +329,8 @@ class ScopedWeapon : Weapon
 		
 		prevAngles = angles;
 		
-		if (!bDrawScope)
+		let viewCam = players[consoleplayer].camera;
+		if (!bDrawScope || owner != viewCam || !owner.player.camera.player)
 		{
 			if (prevStyle != STYLE_None)
 			{
@@ -322,10 +338,11 @@ class ScopedWeapon : Weapon
 				prevStyle = STYLE_None;
 			}
 			
-			return;
+			if (!bDrawScope)
+				return;
 		}
 		
-		if (owner.PlayerNumber() == consoleplayer)
+		if (owner == viewCam && owner.player.camera.player)
 		{
 			int style = owner.GetRenderStyle();
 			if (style != STYLE_None)
@@ -359,8 +376,6 @@ class ScopedWeapon : Weapon
 		}
 		
 		invoker.cam = ScopeCam(Spawn("ScopeCam"));
-		if (invoker.cam)
-			TexMan.SetCameraToTexture(invoker.cam, "SCAMTEX1", invoker.CameraFOV);
 	}
 	
 	action void A_Unscope()
