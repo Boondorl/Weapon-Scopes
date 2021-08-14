@@ -70,14 +70,18 @@ class ScopeHandler : EventHandler
 		int wOfs, hOfs, w, h;
 		[wOfs, hOfs, w, h] = Screen.GetViewWindow();
 		
-		// Scale for PSprite coordinates to screen
 		int height = Screen.GetHeight();
+		int width = Screen.GetWidth();
+		double aspect = Screen.GetAspectRatio();
+		
+		// Scale for PSprite coordinates to screen
 		Vector2 scale;
-		scale.x = w / (240 * Screen.GetAspectRatio());
-		scale.y = (height*w) / (Screen.GetWidth() * 200.);
+		scale.x = w / (240 * aspect);
+		scale.y = (height*w) / (width * 200.);
 		
 		// Make sure scope stays proportional to resolution (based on 1920x1080) and viewport
 		double multi = h / (hOfs*2. + h) * height / 1080.;
+		double xScale = width / (height*aspect); // Forced aspect correction
 		
 		// Get updated information about scope position and size
 		let psp = player.GetPSprite(PSP_WEAPON);
@@ -116,7 +120,7 @@ class ScopeHandler : EventHandler
 		
 		Vector2 scopeSize = TexMan.GetScaledSize(lens)*LerpFloat(weap.GetPrevScale(), weap.scopeScale, e.fracTic) / 2 * multi;
 		Vector2 scopeScale = interpolate ? Lerp(prev[pnum].scale, psp.scale, e.fracTic) : psp.scale;
-		scopeSize.x *= scopeScale.x;
+		scopeSize.x *= scopeScale.x * xScale;
 		scopeSize.y *= scopeScale.y;
 		
 		// Make sure it can't draw outside of the view port
