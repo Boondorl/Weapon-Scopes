@@ -41,7 +41,6 @@ class ScopeHandler : EventHandler
 		}
 	}
 	
-	// TODO: Forced aspect ratio
 	override void RenderUnderlay(RenderEvent e)
 	{
 		let player = players[consoleplayer].camera.player;
