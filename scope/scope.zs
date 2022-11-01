@@ -1,4 +1,4 @@
-//version "4.5"
+//version "4.8"
 struct ScopeData ui
 {
 	Vector2 scale;
@@ -130,7 +130,7 @@ class ScopeHandler : EventHandler
 		DrawScope(lens, false, circle, scopePos, scopeSize, scopeAngle, baseAng: -scopeAngle);
 		let id = weap.GetScopeTextureID();
 		if (id.IsValid())
-			DrawScope(id, true, circle, scopePos, scopeSize, scopeAngle, weap.ScopeRenderStyle(), psp.alpha);
+			DrawScope(id, true, circle, scopePos, scopeSize, scopeAngle, weap.owner.GetRenderStyle(), weap.owner.alpha);
 		
 		Screen.SetClipRect(cx, cy, cw, ch);
 	}
@@ -203,7 +203,8 @@ class ScopedWeapon : Weapon
 	private Vector2 weaponBob;
 	private Vector3 f, r, u;
 	private Vector3 prevAngles;
-	private int prevStyle;
+	private SpriteID invis;
+	private SpriteID prevSprite;
 	
 	double renderHeightOffset;
 	double renderWidthOffset;
@@ -244,18 +245,7 @@ class ScopedWeapon : Weapon
 	{
 		return ps;
 	}
-	
-	clearscope int ScopeRenderStyle() const
-	{
-		if (prevStyle != STYLE_None)
-			return prevStyle;
-		
-		if (!owner)
-			return GetRenderStyle();
-		
-		return owner.GetRenderStyle();
-	}
-	
+
 	clearscope bool ShouldDrawScope() const
 	{
 		return bDrawScope;
@@ -281,13 +271,8 @@ class ScopedWeapon : Weapon
 		super.PostBeginPlay();
 		
 		ClearScopeInterpolation();
-		prevStyle = STYLE_None;
-	}
-	
-	override void AlterWeaponSprite(VisStyle vis, out int changed)
-	{
-		if (prevStyle != STYLE_None)
-			vis.RenderStyle = prevStyle;
+		invis = GetSpriteIndex("TNT1");
+		prevSprite = invis;
 	}
 	
 	override void Tick()
@@ -336,11 +321,10 @@ class ScopedWeapon : Weapon
 		let viewCam = players[consoleplayer].camera;
 		if (!bDrawScope || owner != viewCam || !owner.player.camera.player)
 		{
-			if (prevStyle != STYLE_None)
-			{
-				owner.A_SetRenderStyle(owner.alpha, prevStyle);
-				prevStyle = STYLE_None;
-			}
+			if (prevSprite != invis && owner.sprite == invis)
+				owner.sprite = prevSprite;
+			
+			prevSprite = invis;
 			
 			if (!bDrawScope)
 				return;
@@ -348,12 +332,10 @@ class ScopedWeapon : Weapon
 		
 		if (owner == viewCam && owner.player.camera.player)
 		{
-			int style = owner.GetRenderStyle();
-			if (style != STYLE_None)
-			{
-				prevStyle = style;
-				owner.A_SetRenderStyle(owner.alpha, STYLE_None);
-			}
+			if (owner.sprite != invis)
+				prevSprite = owner.sprite;
+			
+			owner.sprite = invis;
 		}
 		
 		Vector3 offset = f*forwardOffset + r*sideOffset + u*upOffset;
@@ -554,6 +536,12 @@ class ScopeCam : Actor
 		+DONTBLAST
 		+NOTONAUTOMAP
 	}
+	
+	override void BeginPlay() {}
+	
+	override void PostBeginPlay() {}
+	
+	override void MarkPrecacheSounds() {}
 	
 	override void Tick() {}
 }
